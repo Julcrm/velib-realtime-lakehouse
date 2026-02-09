@@ -28,8 +28,8 @@ RUN mkdir -p /opt/spark/jars && \
 RUN mkdir -p $DAGSTER_HOME
 
 # On copie les fichiers de configs
-COPY dagster.yaml $DAGSTER_HOME/dagster.yaml
-COPY workspace.yaml $DAGSTER_HOME/workspace.yaml
+COPY dagster.yaml .
+COPY workspace.yaml .
 
 # 6. Copie du code
 COPY src/ ./src/
