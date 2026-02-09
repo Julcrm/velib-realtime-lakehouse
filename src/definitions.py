@@ -8,7 +8,7 @@ pour définir le code location Dagster.
 from dagster import Definitions, load_assets_from_modules, EnvVar, ScheduleDefinition
 
 # Import des modules d'assets (plutôt que les assets individuels)
-from src.assets import bronze, silver, station_reference, velib_alerte
+from src.assets import bronze, silver, station_reference, velib_alerte, maintenance
 
 # Import des ressources
 from src.resources import MinioResource
@@ -16,7 +16,7 @@ from src.resources import SparkIO
 
 
 # Chargement automatique de TOUS les assets détectés dans ces modules
-all_assets = load_assets_from_modules([bronze, silver, station_reference, velib_alerte])
+all_assets = load_assets_from_modules([bronze, silver, station_reference, velib_alerte, maintenance])
 
 # Schedule haute fréquence (Toutes les 2 minutes) pour les données temps réel
 fast_schedule = ScheduleDefinition(
@@ -29,11 +29,14 @@ fast_schedule = ScheduleDefinition(
     ],
 )
 
-# Schedule quotidien (Minuit) pour les données de référence (statiques)
+# Schedule quotidien (Minuit) : Mise à jour référentiel + Nettoyage
 daily_schedule = ScheduleDefinition(
-    name="refresh_daily_reference",
+    name="daily_maintenance_and_reference",
     cron_schedule="0 0 * * *",
-    target=[station_reference.velib_reference_bronze],
+    target=[
+        station_reference.velib_reference_bronze,
+        maintenance.bronze_cleanup
+    ],
 )
 
 # Définitions Globales
