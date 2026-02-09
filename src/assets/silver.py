@@ -27,7 +27,7 @@ def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
 
     for i in range(lookback_days + 1):
         date_target = datetime.now() - timedelta(days=i)
-        path = date_target.strftime(f"{base_path}/year=%Y/month=%m/day=%d/*")
+        path = date_target.strftime(f"{base_path}/year=%Y/month=%m/day=%d/*/*.json")
         paths_to_read.append(path)
 
     context.log.info(f"Lecture ciblée des partitions : {paths_to_read}")
