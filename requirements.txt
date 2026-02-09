@@ -1,0 +1,8 @@
+dagster
+dagster-webserver
+dagster-postgres
+pandas
+minio
+pyspark==3.5.0
+requests
+boto3
