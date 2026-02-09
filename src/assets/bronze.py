@@ -9,14 +9,10 @@ import datetime
 from datetime import datetime
 import dagster as dg
 import requests
-
 from src.resources import MinioResource
 from src.configs import VelibApiConfig
 
 
-# Définition de l'Asset Dagster.
-# 'key_prefix' organise l'asset logiquement dans l'interface Dagster.
-# 'compute_kind="python"' indique que le traitement est effectué par le CPU local.
 @dg.asset(
     group_name="ingestion",
     compute_kind="python",
@@ -66,7 +62,7 @@ def velib_realtime_bronze(context, config: VelibApiConfig, minio: MinioResource)
 
     # Stratégie de Partitionnement.
     # Découpage hiérarchique : Année > Mois > Jour > Heure.
-    # Objectif : Optimiser lors des lectures futures par Spark ou DuckDB.
+    # Objectif : Optimiser lors des lectures futures par Spark.
     now = datetime.now()
     partition_path = now.strftime("year=%Y/month=%m/day=%d/hour=%H")
 

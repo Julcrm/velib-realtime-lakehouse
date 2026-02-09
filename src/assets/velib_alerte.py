@@ -1,12 +1,12 @@
 """
 Assets de génération d'alertes pour le pipeline de données Vélib.
-
-Ce module génère des alertes critiques pour le dashboard opérationnel en se basant sur
-l'analyse des statistiques de la couche Silver (ex: stations vides avec tendance négative).
+Version corrigée : Gestion robuste du changement de jour (Midnight-Safe).
 """
 
 import dagster as dg
 from pyspark.sql import functions as F
+from pyspark.sql.window import Window
+from datetime import datetime, timedelta
 from src.resources import SparkIO
 
 
@@ -14,41 +14,49 @@ from src.resources import SparkIO
     group_name="operations",
     compute_kind="spark",
     name="velib_critical_alerts",
-    deps=["velib_stats_history_silver"]  # Dépend du Silver
+    deps=["velib_stats_history_silver"]
 )
 def velib_critical_alerts(context, spark_io: SparkIO) -> dg.MaterializeResult:
-    """
-    Génère la liste des stations en alerte pour le Dashboard Ops.
-
-    Règle : Moins de 3 vélos ET une perte nette récente (Vidage actif).
-
-    Args:
-        context: Contexte Dagster.
-        spark_io: Ressource Spark.
-
-    Retourne:
-        MaterializeResult avec les statistiques d'alerte.
-    """
     spark = spark_io.get_session("VelibAlerts")
 
-    # 1. LECTURE Silver (Optimisé par partition date)
-    # Lit uniquement la date d'aujourd'hui. context.run_date pourrait être utilisé, mais current_date standard fonctionne ici.
-    # Spark gère le "current_date" selon l'heure machine.
-    df_stats = spark.read.parquet("s3a://silver/velib_stats") \
-        .filter(F.col("date") == F.current_date())
+    # --- 1. LECTURE INTELLIGENTE ---
+    paths_to_read = []
+    base_path = "s3a://silver/velib_stats"
 
-    # 2. APPLICATION des Règles Métier
-    # On cherche le DERNIER état connu de chaque station.
-    # On groupe par station et on prend le max du timestamp.
-    df_latest = df_stats.groupBy("station_code", "station_name").agg(
-        F.max("last_reported").alias("last_seen"),
-        F.last("bikes_available").alias("bikes"),
-        F.last("net_flow").alias("trend"),  # Tendance instantanée
-        F.last("moving_avg_1h").alias("avg_1h")
+    # On génère les chemins pour Aujourd'hui et Hier
+    for i in range(2):
+        d = datetime.now() - timedelta(days=i)
+        paths_to_read.append(d.strftime(f"{base_path}/date=%Y-%m-%d"))
+
+    context.log.info(f"Scan des partitions Alertes : {paths_to_read}")
+
+    try:
+        df_stats = spark.read.option("basePath", base_path).parquet(*paths_to_read)
+    except Exception:
+        context.log.warn("Aucune donnée Silver trouvée (Alertes ignorées).")
+        return dg.MaterializeResult(metadata={"status": "Skipped"})
+
+    # --- 2. FILTRAGE TEMPOREL ---
+    df_recent = df_stats.filter(
+        F.col("last_reported") >= F.expr("now() - interval 4 hours")
     )
 
-    # 3. FILTRAGE des Alertes
-    # "Critique" = Moins de 3 vélos ET Tendance négative (ou nulle si déjà vide).
+    # --- 3. DÉDUPLICATION ---
+    window_spec = Window.partitionBy("station_code").orderBy(F.col("last_reported").desc())
+
+    df_latest = df_recent.withColumn("rank", F.row_number().over(window_spec)) \
+        .filter(F.col("rank") == 1) \
+        .drop("rank") \
+        .select(
+            F.col("station_code"),
+            F.col("station_name"),
+            F.col("bikes_available").alias("bikes"),
+            F.col("net_flow").alias("trend"),
+            F.col("moving_avg_1h").alias("avg_1h"),
+            F.col("last_reported")
+        )
+
+    # --- 4. RÈGLES MÉTIER ---
     df_alerts = df_latest.filter(
         (F.col("bikes") < 3) &
         (F.col("trend") <= 0)
@@ -58,20 +66,17 @@ def velib_critical_alerts(context, spark_io: SparkIO) -> dg.MaterializeResult:
         .otherwise("WARNING_LOW")
     )
 
-    # 4. ÉCRITURE (Overwrite Single File)
-    # Le dashboard React lira ce fichier unique.
+    # --- 5. ÉCRITURE ---
     save_path = "s3a://gold/alerts/current_status"
 
     df_alerts.coalesce(1).write.mode("overwrite").parquet(save_path)
 
-    # 5. MÉTRIQUES pour l'Observabilité
     alert_count = df_alerts.count()
-    context.log.info(f"🚨 ALERTES GÉNÉRÉES : {alert_count} stations critiques.")
+    context.log.info(f"{alert_count} stations en alerte (basé sur l'état temps réel).")
 
     return dg.MaterializeResult(
         metadata={
             "path": save_path,
-            "alert_count": alert_count,
-            "status": "Generated"
+            "alert_count": alert_count
         }
     )

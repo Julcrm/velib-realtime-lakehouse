@@ -1,15 +1,12 @@
 """
 Assets de la couche Silver pour le pipeline de données Vélib.
-
-Ce module traite les données brutes de la couche Bronze (MinIO) pour les nettoyer, les enrichir
-et calculer des statistiques dans la couche Silver, prêtes pour l'analytique.
 """
 
 import dagster as dg
 from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType, TimestampType, LongType
 from pyspark.sql.window import Window
-
+from datetime import datetime, timedelta
 from src.resources import SparkIO
 
 
@@ -17,52 +14,50 @@ from src.resources import SparkIO
     group_name="transformation",
     compute_kind="spark",
     name="velib_stats_history_silver",
-    deps=["velib_realtime_bronze", "velib_reference_bronze"]
+    deps=["velib_reference_bronze", "velib_realtime_bronze"]
 )
 def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
-    """
-    Transforme et enrichit les données des stations Vélib.
-
-    Lit les données brutes du Bronze (MinIO), filtre, nettoie, calcule des métriques opérationnelles
-    (flux net, moyenne mobile), et écrit dans la couche Silver (MinIO).
-
-    Args:
-        context: Contexte Dagster.
-        spark_io: Ressource Spark pour la gestion de session.
-
-    Retourne:
-        MaterializeResult avec les métadonnées de traitement.
-    """
     spark = spark_io.get_session("VelibSilverOps")
 
-    # 1. LECTURE (Utilisation du wildcard year=* pour éviter les erreurs de dossier)
-    try:
-        df_status_raw = spark.read.option("basePath", "s3a://bronze/velib").json("s3a://bronze/velib/year=*")
+    # --- 1. OPTIMISATION ---
+    # On cible les 3 derniers jours (fenêtre glissante).
+    paths_to_read = []
+    base_path = "s3a://bronze/velib"
+    lookback_days = 3
 
-        # Filtre 1 : Garder uniquement les FICHIERS RÉCENTS (Optimisation Spark)
-        # Évite le listing extensif des anciennes partitions.
-        df_status_raw = df_status_raw.filter(
-            F.to_timestamp(F.col("lastUpdatedOther")) >= F.date_sub(F.current_timestamp(), 2)
-        )
+    for i in range(lookback_days + 1):
+        date_target = datetime.now() - timedelta(days=i)
+        path = date_target.strftime(f"{base_path}/year=%Y/month=%m/day=%d")
+        paths_to_read.append(path)
+
+    context.log.info(f"Lecture ciblée des partitions : {paths_to_read}")
+
+    # --- 2. LECTURE SÉCURISÉE ---
+    try:
+        # On passe la LISTE des chemins à Spark.
+        df_status_raw = spark.read \
+            .option("basePath", base_path) \
+            .option("mergeSchema", "true") \
+            .json(paths_to_read)
+
     except Exception as e:
-        context.log.warn(f"Pas de données Bronze trouvées : {e}")
-        return dg.MaterializeResult(metadata={"status": "Skipped"})
+        if "Path does not exist" in str(e) or "AnalysisException" in str(e):
+            context.log.warn(f"Aucune donnée trouvée dans les chemins ciblés : {paths_to_read}")
+            return dg.MaterializeResult(metadata={"status": "Skipped_NoData"})
+        raise e
 
     # B. Données de Référence
     try:
         df_info_raw = spark.read.json("s3a://bronze/velib/reference/station_information.json")
     except Exception:
-        raise Exception("❌ Référentiel Stations Manquant.")
+        raise Exception("Référentiel Stations Manquant.")
 
-    # 2. PRÉPARATION & NETTOYAGE
-
-    # Dimension : Noms des Stations
+    # --- 3. PRÉPARATION & NETTOYAGE  ---
     df_names = df_info_raw.select(F.explode(F.col("data.stations")).alias("info")).select(
         F.col("info.station_id").cast(LongType()).alias("ref_id"),
         F.col("info.name").alias("station_name")
     )
 
-    # Faits : Statut des Stations
     df_status = df_status_raw.select(F.explode(F.col("data.stations")).alias("status")).select(
         F.col("status.station_id").cast(LongType()).alias("status_id"),
         F.col("status.stationCode").alias("station_code"),
@@ -72,17 +67,14 @@ def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
         F.from_unixtime(F.col("status.last_reported")).cast(TimestampType()).alias("last_reported")
     )
 
-    # --- FILTRE ZOMBIE ---
-    # Supprime les stations qui n'ont pas communiqué depuis 24h.
-    # (Même si le fichier API est récent, les données de la station peuvent être obsolètes).
+    # Filtre Zombie, on ne garde que les stations dont le dernier rapport est récent (moins de 24h).
     df_status = df_status.filter(
         F.col("last_reported") >= F.date_sub(F.current_timestamp(), 1)
     )
 
-    # Jointure Faits avec Dimension
     df_enriched = df_status.join(F.broadcast(df_names), df_status["status_id"] == df_names["ref_id"], "left")
 
-    # 3. CALCULS OPS
+    # --- 4. CALCULS OPS ---
     window_spec = Window.partitionBy("station_code").orderBy("last_reported_sec")
     window_1h = window_spec.rangeBetween(-3600, 0)
 
@@ -100,9 +92,14 @@ def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
         "net_flow", "moving_avg_1h", "last_reported", "date"
     )
 
-    # 4. ÉCRITURE
+    # --- 5. ÉCRITURE ---
     save_path = "s3a://silver/velib_stats"
-    # Écrasement par partition pour assurer l'idempotence au sein de la même journée
     df_final.write.mode("overwrite").partitionBy("date").parquet(save_path)
 
-    return dg.MaterializeResult(metadata={"path": save_path, "rows": df_final.count()})
+    return dg.MaterializeResult(
+        metadata={
+            "path": save_path,
+            "rows": df_final.count(),
+            "input_partitions": len(paths_to_read)
+        }
+    )
