@@ -1,5 +1,5 @@
 load_from:
   - grpc_server:
-      host: velib-realtime-lakehouse
+      host: my-spark-project
       port: 4000
-      location_name: "velib-realtime-lakehouse"
+      location_name: "spark_project"
