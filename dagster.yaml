@@ -1,0 +1,36 @@
+storage:
+  postgres:
+    postgres_db:
+      username: {env: DAGSTER_POSTGRES_USER}
+      password: {env: DAGSTER_POSTGRES_PASSWORD}
+      hostname: {env: DAGSTER_POSTGRES_HOST}
+      db_name:  {env: DAGSTER_POSTGRES_DB}
+      port: 5432
+
+# Optionnel : Pour que les logs d'exécution soient aussi stockés en base
+run_storage:
+  postgres:
+    postgres_db:
+      username: {env: DAGSTER_POSTGRES_USER}
+      password: {env: DAGSTER_POSTGRES_PASSWORD}
+      hostname: {env: DAGSTER_POSTGRES_HOST}
+      db_name:  {env: DAGSTER_POSTGRES_DB}
+      port: 5432
+
+event_log_storage:
+  postgres:
+    postgres_db:
+      username: {env: DAGSTER_POSTGRES_USER}
+      password: {env: DAGSTER_POSTGRES_PASSWORD}
+      hostname: {env: DAGSTER_POSTGRES_HOST}
+      db_name:  {env: DAGSTER_POSTGRES_DB}
+      port: 5432
+
+schedule_storage:
+  postgres:
+    postgres_db:
+      username: {env: DAGSTER_POSTGRES_USER}
+      password: {env: DAGSTER_POSTGRES_PASSWORD}
+      hostname: {env: DAGSTER_POSTGRES_HOST}
+      db_name:  {env: DAGSTER_POSTGRES_DB}
+      port: 5432
