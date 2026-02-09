@@ -6,12 +6,28 @@ services:
     ports:
       - "4000:4000"
     environment:
-      - SPARK_EXTRA_CLASSPATH=/opt/spark/jars/*
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
+      # 1. Variables système
+      SPARK_EXTRA_CLASSPATH: /opt/spark/jars/*
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      # 2. Variables AWS / MinIO
+      AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
+      AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
+      S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
+      # 3. Variables Postgres
+      DAGSTER_POSTGRES_USER: '${DAGSTER_POSTGRES_USER}'
+      DAGSTER_POSTGRES_PASSWORD: '${DAGSTER_POSTGRES_PASSWORD}'
+      DAGSTER_POSTGRES_DB: '${DAGSTER_POSTGRES_DB}'
+      DAGSTER_POSTGRES_HOST: '${DAGSTER_POSTGRES_HOST}'
     networks:
       - coolify
+    command: >
+      sh -c "
+      echo 'Setup Spark config...' &&
+      mkdir -p /opt/dagster/dagster_home &&
+      cp /opt/dagster/app/dagster.yaml /opt/dagster/dagster_home/dagster.yaml &&
+      cp /opt/dagster/app/workspace.yaml /opt/dagster/dagster_home/workspace.yaml &&
+      echo 'Starting Spark gRPC Server...' &&
+      dagster api grpc -h 0.0.0.0 -p 4000 -f src/definitions.py"
 
   # --- SERVICE 2 : DAGSTER ---
   dagster-platform:
@@ -28,6 +44,7 @@ services:
       AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
       AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
       S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
+      GRPC_DNS_RESOLVER: native
     volumes:
       - 'dagster_home:/opt/dagster/dagster_home'
       - 'dagster_temp:/tmp'

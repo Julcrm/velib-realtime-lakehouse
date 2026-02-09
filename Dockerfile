@@ -27,15 +27,17 @@ RUN mkdir -p /opt/spark/jars && \
 # 5. Setup Dagster Home
 RUN mkdir -p $DAGSTER_HOME
 
-# On copie les fichiers de configs
+# Copie les fichiers de configs
 COPY dagster.yaml .
 COPY workspace.yaml .
 
 # 6. Copie du code
 COPY src/ ./src/
 
-# 7. Exposer le BON port
+# 7. Exposer le port
 EXPOSE 4000
 
-# Commande de lancement (Code Location)
-CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-f", "src/definitions.py"]
+# 8. Commande de lancement
+CMD sh -c "cp dagster.yaml $DAGSTER_HOME/dagster.yaml && \
+           cp workspace.yaml $DAGSTER_HOME/workspace.yaml && \
+           dagster api grpc -h 0.0.0.0 -p 4000 -f src/definitions.py"
