@@ -40,7 +40,7 @@ services:
     # 3. Lance le Webserver et le Daemon ensemble
     command: >
       sh -c "
-      pip install dagster dagster-webserver dagster-postgres psycopg2-binary &&
+      pip install --break-system-packages dagster dagster-webserver dagster-postgres psycopg2-binary &&
       mkdir -p /opt/dagster/dagster_home &&
       echo 'storage:\n  postgres:\n    postgres_db:\n      username: {env: DAGSTER_POSTGRES_USER}\n      password: {env: DAGSTER_POSTGRES_PASSWORD}\n      hostname: {env: DAGSTER_POSTGRES_HOST}\n      db_name: {env: DAGSTER_POSTGRES_DB}\n      port: 5432\n' > /opt/dagster/dagster_home/dagster.yaml &&
       echo 'load_from:\n  - grpc_server:\n      host: my-spark-project\n      port: 4000\n      location_name: \"spark_project\"' > /opt/dagster/dagster_home/workspace.yaml &&
