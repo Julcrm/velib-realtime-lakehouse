@@ -24,10 +24,12 @@ RUN mkdir -p /opt/spark/jars && \
     curl -L -o /opt/spark/jars/hadoop-aws-3.3.4.jar https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && \
     curl -L -o /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
 
-# 5. Setup Dagster Home (CORRIGÉ)
+# 5. Setup Dagster Home
 RUN mkdir -p $DAGSTER_HOME
-# On copie le vrai fichier de config, pas un fichier vide !
+
+# On copie les fichiers de configs
 COPY dagster.yaml $DAGSTER_HOME/dagster.yaml
+COPY workspace.yaml $DAGSTER_HOME/workspace.yaml
 
 # 6. Copie du code
 COPY src/ ./src/
