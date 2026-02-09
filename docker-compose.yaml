@@ -16,36 +16,35 @@ services:
     networks:
       - coolify
 
-  # --- SERVICE 2 : LA PLATEFORME DAGSTER (Le Chef) ---
-  # C'est une image standard, elle ne contient PAS ton code Spark.
+  # --- SERVICE 2 : DAGSTER ---
   dagster-platform:
-    image: python:3.11-slim
+    build: .
     restart: always
     ports:
-      - "3000:3000" # L'interface Web pour toi
+      - '3000:3000'
     environment:
-      - DAGSTER_POSTGRES_USER=${DAGSTER_POSTGRES_USER}
-      - DAGSTER_POSTGRES_PASSWORD=${DAGSTER_POSTGRES_PASSWORD}
-      - DAGSTER_POSTGRES_DB=${DAGSTER_POSTGRES_DB}
-      - DAGSTER_POSTGRES_HOST=${DAGSTER_POSTGRES_HOST}
-      - DAGSTER_HOME=/opt/dagster/dagster_home
+      DAGSTER_POSTGRES_USER: '${DAGSTER_POSTGRES_USER}'
+      DAGSTER_POSTGRES_PASSWORD: '${DAGSTER_POSTGRES_PASSWORD}'
+      DAGSTER_POSTGRES_DB: '${DAGSTER_POSTGRES_DB}'
+      DAGSTER_POSTGRES_HOST: '${DAGSTER_POSTGRES_HOST}'
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
+      AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
+      S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
     volumes:
-      - dagster_home:/opt/dagster/dagster_home
-      - dagster_temp:/tmp
+      - 'dagster_home:/opt/dagster/dagster_home'
+      - 'dagster_temp:/tmp'
     networks:
       - coolify
-    # La commande magique :
-    # 1. Crée le yaml pour se connecter à Postgres
-    # 2. Crée le workspace.yaml pour se connecter à ton conteneur Spark (my-spark-project)
-    # 3. Lance le Webserver et le Daemon ensemble
     command: >
       sh -c "
-      pip install --break-system-packages dagster dagster-webserver dagster-postgres psycopg2-binary &&
+      echo 'Génération des fichiers de configuration...' &&
       mkdir -p /opt/dagster/dagster_home &&
       echo 'storage:\n  postgres:\n    postgres_db:\n      username: {env: DAGSTER_POSTGRES_USER}\n      password: {env: DAGSTER_POSTGRES_PASSWORD}\n      hostname: {env: DAGSTER_POSTGRES_HOST}\n      db_name: {env: DAGSTER_POSTGRES_DB}\n      port: 5432\n' > /opt/dagster/dagster_home/dagster.yaml &&
       echo 'load_from:\n  - grpc_server:\n      host: my-spark-project\n      port: 4000\n      location_name: \"spark_project\"' > /opt/dagster/dagster_home/workspace.yaml &&
-      python -m dagster_webserver -h 0.0.0.0 -p 3000 -w /opt/dagster/dagster_home/workspace.yaml &
-      /usr/local/bin/dagster-daemon run -w /opt/dagster/dagster_home/workspace.yaml"
+      echo 'Lancement du Webserver et du Daemon...' &&
+      dagster-webserver -h 0.0.0.0 -p 3000 -w /opt/dagster/dagster_home/workspace.yaml &
+      dagster-daemon run -w /opt/dagster/dagster_home/workspace.yaml"
 
 networks:
   coolify:
