@@ -1,15 +1,12 @@
 services:
-  # --- SERVICE 1 : TON CODE (L'Ouvrier Spark) ---
-  # Si tu as mis ton code sur Git, Coolify va le builder.
-  # Sinon tu pointes vers ton image.
+  # --- SERVICE 1 : Spark ---
   my-spark-project:
-    build: .  # Coolify va construire ton Dockerfile
+    build: .
     restart: always
     ports:
-      - "4000:4000" # Le port technique pour que Dagster lui parle
+      - "4000:4000"
     environment:
       - SPARK_EXTRA_CLASSPATH=/opt/spark/jars/*
-      # Tes variables AWS pour que ton code puisse bosser
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL}
