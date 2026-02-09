@@ -8,7 +8,7 @@ from src.resources import MinioResource
     compute_kind="python",
     name="bronze_cleanup",
 )
-def bronze_cleanup_policy(context, minio: MinioResource) -> dg.MaterializeResult:
+def bronze_cleanup(context, minio: MinioResource) -> dg.MaterializeResult:
     """
     Supprime les fichiers JSON bruts vieux de plus de 3 jours (72h).
     """
