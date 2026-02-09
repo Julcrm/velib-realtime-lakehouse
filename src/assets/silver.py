@@ -25,12 +25,12 @@ def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
 
     now = datetime.now()
     # Mois en cours
-    current_month_path = now.strftime(f"{base_path}/year=%Y/month=%m/day=*")
+    current_month_path = now.strftime(f"{base_path}/year=%Y/month=%m/day=*/*/*.json")
     paths_to_read.append(current_month_path)
 
     # Mois précédent
     last_month = now.replace(day=1) - timedelta(days=1)
-    prev_month_path = last_month.strftime(f"{base_path}/year=%Y/month=%m/day=*")
+    prev_month_path = last_month.strftime(f"{base_path}/year=%Y/month=%m/day=*/*/*.json")
     paths_to_read.append(prev_month_path)
 
     context.log.info(f"Lecture par mois (Safe Mode) : {paths_to_read}")
