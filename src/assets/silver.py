@@ -20,29 +20,34 @@ def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
     spark = spark_io.get_session("VelibSilverOps")
 
     # --- 1. OPTIMISATION ---
-    # On cible les 3 derniers jours (fenêtre glissante).
     paths_to_read = []
     base_path = "s3a://bronze/velib"
-    lookback_days = 3
 
-    for i in range(lookback_days + 1):
-        date_target = datetime.now() - timedelta(days=i)
-        path = date_target.strftime(f"{base_path}/year=%Y/month=%m/day=%d/*/*.json")
-        paths_to_read.append(path)
+    now = datetime.now()
+    # Mois en cours
+    current_month_path = now.strftime(f"{base_path}/year=%Y/month=%m/day=*")
+    paths_to_read.append(current_month_path)
 
-    context.log.info(f"Lecture ciblée des partitions : {paths_to_read}")
+    # Mois précédent
+    last_month = now.replace(day=1) - timedelta(days=1)
+    prev_month_path = last_month.strftime(f"{base_path}/year=%Y/month=%m/day=*")
+    paths_to_read.append(prev_month_path)
 
-    # --- 2. LECTURE SÉCURISÉE ---
+    context.log.info(f"Lecture par mois (Safe Mode) : {paths_to_read}")
+
     try:
-        # On passe la LISTE des chemins à Spark.
         df_status_raw = spark.read \
             .option("basePath", base_path) \
             .option("mergeSchema", "true") \
             .json(paths_to_read)
 
+        df_status_raw = df_status_raw.filter(
+            F.to_date(F.col("last_reported")) >= F.date_sub(F.current_date(), 3)
+        )
+
     except Exception as e:
         if "Path does not exist" in str(e) or "AnalysisException" in str(e):
-            context.log.warn(f"Aucune donnée trouvée dans les chemins ciblés : {paths_to_read}")
+            context.log.warn(f"Aucune donnée trouvée pour ce mois.")
             return dg.MaterializeResult(metadata={"status": "Skipped_NoData"})
         raise e
 
