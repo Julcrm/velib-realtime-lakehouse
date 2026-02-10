@@ -1,0 +1,37 @@
+[project]
+name = "velib-project"
+version = "0.1.0"
+description = "Pipeline de données Vélib avec Dagster et Spark."
+readme = "README.md"
+requires-python = "==3.10.*"
+dependencies = [
+    "dagster",
+    "dagster-webserver",
+    "dagster-postgres", # Si tu utilises Postgres
+    "pandas",
+    "pyspark",          # Le moteur de calcul
+    "requests",         # Pour l'API Vélib
+    "python-dotenv",    # Pour charger tes secrets
+    "fastapi",
+    "uvicorn",
+    "duckdb",
+    "boto3"
+]
+
+[project.scripts]
+# Permet de lancer "velib_dev" pour démarrer dagster dev
+velib_dev = "dagster dev -f src/definitions.py"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "ruff"     # Linter
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+fixable = ["ALL"]
