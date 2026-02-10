@@ -21,7 +21,7 @@ all_assets = load_assets_from_modules([bronze, silver, station_reference, velib_
 # Schedule haute fréquence (Toutes les 2 minutes) pour les données temps réel
 fast_schedule = ScheduleDefinition(
     name="refresh_every_2_min",
-    cron_schedule="*/2 * * * *",
+    cron_schedule="*/5 * * * *",
     target=[
         bronze.velib_realtime_bronze,
         silver.velib_stats_silver,
