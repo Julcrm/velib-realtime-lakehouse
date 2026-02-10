@@ -1,14 +1,12 @@
 """
-Assets de la couche Silver pour le pipeline de données Vélib.
+Assets de la couche Silver.
 """
 
 import dagster as dg
 from pyspark.sql import functions as F
 from pyspark.sql.types import IntegerType, TimestampType, LongType
 from pyspark.sql.window import Window
-from datetime import datetime, timedelta
-from src.resources import SparkIO
-
+from src.resources import SparkIO, MinioResource
 
 @dg.asset(
     group_name="transformation",
@@ -16,55 +14,65 @@ from src.resources import SparkIO
     name="velib_stats_history_silver",
     deps=["velib_realtime_bronze", "velib_reference_bronze"]
 )
-def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
+def velib_stats_silver(context, spark_io: SparkIO, minio: MinioResource) -> dg.MaterializeResult:
     spark = spark_io.get_session("VelibSilverOps")
 
-    # --- 1. OPTIMISATION ---
-    paths_to_read = []
-    base_path = "s3a://bronze/velib"
+    # --- 1. LISTING ---
+    # On utilise Boto3 pour lister tous les fichiers JSON présents.
 
-    now = datetime.now()
+    s3 = minio.get_client()
+    bucket = "bronze"
+    prefix = "velib/"
 
-    current_month = now.strftime(f"{base_path}/year=%Y/month=%m")
-    paths_to_read.append(current_month)
+    found_files = []
 
-    # Mois précédent
-    last_month = now.replace(day=1) - timedelta(days=1)
-    prev_month = last_month.strftime(f"{base_path}/year=%Y/month=%m")
-    paths_to_read.append(prev_month)
+    # Pagination
+    paginator = s3.get_paginator("list_objects_v2")
+    pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
-    context.log.info(f"Lecture Récursive des Mois : {paths_to_read}")
+    context.log.info("Scan complet du Data Lake (Bronze)...")
 
+    for page in pages:
+        if "Contents" not in page:
+            continue
+        for obj in page["Contents"]:
+            key = obj["Key"]
+            if key.endswith(".json") and "reference" not in key:
+                full_path = f"s3a://{bucket}/{key}"
+                found_files.append(full_path)
+
+    # --- 2. SÉCURITÉ ---
+    if not found_files:
+        context.log.warn("Aucun fichier JSON trouvé. Le pipeline s'arrête là.")
+        return dg.MaterializeResult(metadata={"status": "Skipped_Empty"})
+
+    count = len(found_files)
+    context.log.info(f"{count} fichiers identifiés à traiter.")
+
+    files_to_process = found_files
+
+    # --- 3. LECTURE ---
     try:
-        df_status_raw = spark.read \
-            .format("json") \
-            .option("recursiveFileLookup", "true") \
-            .option("pathGlobFilter", "*.json") \
-            .load(paths_to_read)
-
-        # On filtre pour ne garder que les données récentes (3 jours)
-        df_status_raw = df_status_raw.filter(
-            F.to_date(F.col("last_reported")) >= F.date_sub(F.current_date(), 3)
-        )
-
+        df_status_raw = spark.read.json(files_to_process)
     except Exception as e:
-        if "Path does not exist" in str(e) or "AnalysisException" in str(e):
-            context.log.warn(f"Aucun dossier de mois trouvé : {paths_to_read}")
-            return dg.MaterializeResult(metadata={"status": "Skipped_NoData"})
+        context.log.error(f"Erreur critique Spark : {e}")
         raise e
 
-    # B. Données de Référence
+    # --- 4. DATA REFERENCE ---
     try:
-        df_info_raw = spark.read.json("s3a://bronze/velib/reference/station_information.json")
+        df_info_raw = spark.read.json(f"s3a://{bucket}/velib/reference/station_information.json")
     except Exception:
-        raise Exception("Référentiel Stations Manquant.")
+        raise Exception("Référentiel Stations Manquant (lance l'asset Reference Bronze !)")
 
-    # --- 3. PRÉPARATION & NETTOYAGE  ---
+    # --- 5. TRANSFORMATION (Logique Métier) ---
+
+    # a. Explode Reference
     df_names = df_info_raw.select(F.explode(F.col("data.stations")).alias("info")).select(
         F.col("info.station_id").cast(LongType()).alias("ref_id"),
         F.col("info.name").alias("station_name")
     )
 
+    # b. Explode Status
     df_status = df_status_raw.select(F.explode(F.col("data.stations")).alias("status")).select(
         F.col("status.station_id").cast(LongType()).alias("status_id"),
         F.col("status.stationCode").alias("station_code"),
@@ -74,14 +82,15 @@ def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
         F.from_unixtime(F.col("status.last_reported")).cast(TimestampType()).alias("last_reported")
     )
 
-    # Filtre Zombie, on ne garde que les stations dont le dernier rapport est récent (moins de 24h).
+    # c. Nettoyage Zombies (Stations muettes > 24h)
     df_status = df_status.filter(
         F.col("last_reported") >= F.date_sub(F.current_timestamp(), 1)
     )
 
+    # d. Enrichissement
     df_enriched = df_status.join(F.broadcast(df_names), df_status["status_id"] == df_names["ref_id"], "left")
 
-    # --- 4. CALCULS OPS ---
+    # e. Fenêtrage (Stats Glissantes)
     window_spec = Window.partitionBy("station_code").orderBy("last_reported_sec")
     window_1h = window_spec.rangeBetween(-3600, 0)
 
@@ -99,14 +108,21 @@ def velib_stats_silver(context, spark_io: SparkIO) -> dg.MaterializeResult:
         "net_flow", "moving_avg_1h", "last_reported", "date"
     )
 
-    # --- 5. ÉCRITURE ---
+    # --- 6. ÉCRITURE ---
     save_path = "s3a://silver/velib_stats"
-    df_final.write.mode("overwrite").partitionBy("date").parquet(save_path)
+
+    if df_final.head(1):
+        df_final.write.mode("overwrite").partitionBy("date").parquet(save_path)
+        final_count = df_final.count()
+        context.log.info(f"Silver généré : {final_count} lignes insérées.")
+    else:
+        context.log.warn("Pipeline terminé mais résultat vide (données trop anciennes ?).")
+        final_count = 0
 
     return dg.MaterializeResult(
         metadata={
             "path": save_path,
-            "rows": df_final.count(),
-            "input_partitions": len(paths_to_read)
+            "input_files": count,
+            "output_rows": final_count
         }
     )
