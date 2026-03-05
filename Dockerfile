@@ -38,7 +38,6 @@ RUN mkdir -p $DAGSTER_HOME
 # Copie des configs et du code
 COPY dagster.yaml workspace.yaml ./
 COPY src/ ./src/
-COPY serving/ ./serving/
 COPY entrypoint.sh ./
 
 # Rendre le script exécutable
