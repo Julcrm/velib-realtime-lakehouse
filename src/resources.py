@@ -74,6 +74,8 @@ class SparkIO(ConfigurableResource):
                 .config("spark.hadoop.fs.s3a.access.key", os.getenv("AWS_ACCESS_KEY_ID"))
                 .config("spark.hadoop.fs.s3a.secret.key", os.getenv("AWS_SECRET_ACCESS_KEY"))
                 .config("spark.hadoop.fs.s3a.path.style.access", "true")
+                .config("spark.hadoop.fs.s3a.connection.timeout", "60000")
+                .config("spark.hadoop.fs.s3a.connection.establish.timeout", "5000")
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .config("spark.sql.shuffle.partitions", "4")
                 .config("spark.default.parallelism", "4")

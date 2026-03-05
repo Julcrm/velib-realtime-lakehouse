@@ -1,33 +1,5 @@
 services:
-  # --- SERVICE 1 : Spark ---
-  my-spark-project:
-    build: .
-    restart: always
-    ports:
-      - "4000:4000"
-    environment:
-      # Variables d'environnement
-      SPARK_EXTRA_CLASSPATH: /opt/spark/jars/*
-      DAGSTER_HOME: /opt/dagster/dagster_home
-      AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
-      AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
-      S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
-      DAGSTER_POSTGRES_USER: '${DAGSTER_POSTGRES_USER}'
-      DAGSTER_POSTGRES_PASSWORD: '${DAGSTER_POSTGRES_PASSWORD}'
-      DAGSTER_POSTGRES_DB: '${DAGSTER_POSTGRES_DB}'
-      DAGSTER_POSTGRES_HOST: '${DAGSTER_POSTGRES_HOST}'
-    networks:
-      - coolify
-    command: >
-      sh -c "
-      echo 'Setup Spark config...' &&
-      mkdir -p /opt/dagster/dagster_home &&
-      cp /opt/dagster/app/dagster.yaml /opt/dagster/dagster_home/dagster.yaml &&
-      cp /opt/dagster/app/workspace.yaml /opt/dagster/dagster_home/workspace.yaml &&
-      echo 'Starting Spark gRPC Server...' &&
-      uv run dagster api grpc -h 0.0.0.0 -p 4000 -f src/definitions.py"
-
-  # --- SERVICE 2 : DAGSTER ---
+  # --- SERVICE 1 : DAGSTER ---
   dagster-platform:
     build: .
     restart: always
@@ -38,24 +10,48 @@ services:
       DAGSTER_POSTGRES_PASSWORD: '${DAGSTER_POSTGRES_PASSWORD}'
       DAGSTER_POSTGRES_DB: '${DAGSTER_POSTGRES_DB}'
       DAGSTER_POSTGRES_HOST: '${DAGSTER_POSTGRES_HOST}'
-      DAGSTER_HOME: /opt/dagster/dagster_home
       AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
       AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
       S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
       GRPC_DNS_RESOLVER: native
     volumes:
       - 'dagster_home:/opt/dagster/dagster_home'
-      - 'dagster_temp:/tmp'
     networks:
       - coolify
     command: >
-      sh -c "
-      echo 'Force update configuration from image...' &&
-      cp /opt/dagster/app/dagster.yaml /opt/dagster/dagster_home/dagster.yaml &&
-      cp /opt/dagster/app/workspace.yaml /opt/dagster/dagster_home/workspace.yaml &&
-      echo 'Starting Dagster...' &&
-      uv run dagster-webserver -h 0.0.0.0 -p 3000 -w /opt/dagster/dagster_home/workspace.yaml &
-      uv run dagster-daemon run -w /opt/dagster/dagster_home/workspace.yaml"
+      sh -c "uv run dagster-webserver -h 0.0.0.0 -p 3000 -w workspace.yaml & uv run dagster-daemon run -w workspace.yaml"
+
+  # --- SERVICE 2 : SPARK WORKER ---
+  spark-worker:
+    build: .
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
+      AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
+      S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
+      DAGSTER_POSTGRES_USER: '${DAGSTER_POSTGRES_USER}'
+      DAGSTER_POSTGRES_PASSWORD: '${DAGSTER_POSTGRES_PASSWORD}'
+      DAGSTER_POSTGRES_DB: '${DAGSTER_POSTGRES_DB}'
+      DAGSTER_POSTGRES_HOST: '${DAGSTER_POSTGRES_HOST}'
+    networks:
+      - coolify
+    command: uv run dagster api grpc -h 0.0.0.0 -p 4000 -f src/definitions.py
+
+  # --- SERVICE 3 : FASTAPI ---
+  api-serving:
+    build: .
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      SERVICE_TYPE: api
+      AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
+      AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
+      S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
+    networks:
+      - coolify
 
 networks:
   coolify:
@@ -63,4 +59,3 @@ networks:
 
 volumes:
   dagster_home:
-  dagster_temp:
