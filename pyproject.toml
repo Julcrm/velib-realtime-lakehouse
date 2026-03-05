@@ -9,7 +9,7 @@ dependencies = [
     "dagster-webserver",
     "dagster-postgres", # Si tu utilises Postgres
     "pandas",
-    "pyspark",          # Le moteur de calcul
+    "pyspark==3.5.3",          # Le moteur de calcul
     "requests",         # Pour l'API Vélib
     "python-dotenv",    # Pour charger tes secrets
     "fastapi",
