@@ -33,36 +33,6 @@ def get_db_connection():
     con.execute("SET s3_url_style='path';")
     return con
 
-
-@app.get("/health/pipeline")
-def get_pipeline_status():
-    """
-    Moniteur du Pipeline (Pour ton badge vert/rouge)
-    Vérifie la fraîcheur du dernier fichier 'Gold'.
-    """
-    con = get_db_connection()
-    try:
-        # On lit le fichier d'alerte généré par velib_alerte.py
-        # Le chemin doit correspondre à ton save_path dans velib_alerte.py
-        query = "SELECT MAX(last_seen) as last_run FROM read_parquet('s3://gold/alerts/current_status/*.parquet')"
-        result = con.execute(query).fetchone()
-
-        last_run_timestamp = result[0]
-
-        # Calcul de la fraîcheur
-        now = datetime.now()
-        # Note: last_seen est un timestamp (int) ou datetime selon ton schéma Spark.
-        # Si c'est un int (unix timestamp), convertis-le.
-
-        return {
-            "status": "online",
-            "last_data_update": last_run_timestamp,
-            "message": "Pipeline operational"
-        }
-    except Exception as e:
-        return {"status": "offline", "error": str(e)}
-
-
 @app.get("/alerts/critical")
 def get_critical_alerts():
     """
