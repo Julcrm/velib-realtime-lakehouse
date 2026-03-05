@@ -40,7 +40,7 @@ services:
     command: uv run dagster api grpc -h 0.0.0.0 -p 4000 -f src/definitions.py
 
   # --- SERVICE 3 : FASTAPI ---
-  api-serving:
+  pi-serving:
     build: .
     restart: always
     environment:
@@ -50,6 +50,11 @@ services:
       S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
     networks:
       - coolify
+    labels:
+      - "coolify.managed=true"
+      - "traefik.enable=true"
+      - "traefik.http.routers.api-serving.rule=Host(`${API_DOMAIN}`)"
+      - "traefik.http.services.api-serving.loadbalancer.server.port=8000"
 
 networks:
   coolify:
