@@ -38,9 +38,18 @@ RUN mkdir -p $DAGSTER_HOME
 # Copie des configs et du code
 COPY dagster.yaml workspace.yaml ./
 COPY src/ ./src/
+COPY serving/ ./serving/
+COPY entrypoint.sh ./
+
+# Rendre le script exécutable
+RUN chmod +x entrypoint.sh
 
 # --- 7. Finalisation ---
-EXPOSE 4000
+# On expose les deux ports potentiels
+EXPOSE 4000 8000
+
+# Le conteneur démarre via le script d'aiguillage
+CMD ["./entrypoint.sh"]
 
 # On utilise "uv run" pour lancer la commande dans l'environnement virtuel
 CMD sh -c "cp dagster.yaml $DAGSTER_HOME/dagster.yaml && \
