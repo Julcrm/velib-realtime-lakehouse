@@ -18,31 +18,31 @@ from src.resources import SparkIO
 # Chargement automatique de TOUS les assets détectés dans ces modules
 all_assets = load_assets_from_modules([bronze, silver, station_reference, velib_alerte, maintenance])
 
-# Schedule haute fréquence (Toutes les 2 minutes) pour les données temps réel
-fast_schedule = ScheduleDefinition(
-    name="refresh_every_2_min",
+# 1. Ingestion (Toutes les 5 min)
+ingestion_schedule = ScheduleDefinition(
+    name="ingestion_bronze_5m",
     cron_schedule="*/5 * * * *",
-    target=[
-        bronze.velib_realtime_bronze,
-        silver.velib_stats_silver,
-        velib_alerte.velib_critical_alerts
-    ],
+    target=[bronze.velib_realtime_bronze],
 )
 
-# Schedule quotidien (Minuit) : Mise à jour référentiel + Nettoyage
+# 2. Processing & Alerting (Toutes les 15 min)
+processing_schedule = ScheduleDefinition(
+    name="processing_silver_gold_15m",
+    cron_schedule="*/15 * * * *",
+    target=[silver.velib_stats_silver, velib_alerte.velib_critical_alerts],
+)
+
+# 3. Maintenance (Quotidien)
 daily_schedule = ScheduleDefinition(
     name="daily_maintenance_and_reference",
     cron_schedule="0 0 * * *",
-    target=[
-        station_reference.velib_reference_bronze,
-        maintenance.bronze_cleanup
-    ],
+    target=[station_reference.velib_reference_bronze, maintenance.bronze_cleanup],
 )
 
 # Définitions Globales
 defs = Definitions(
     assets=all_assets,
-    schedules=[fast_schedule, daily_schedule],
+    schedules=[ingestion_schedule, processing_schedule, daily_schedule], # Les 3 doivent être ici
     resources={
         "minio": MinioResource(
             endpoint_url=EnvVar("S3_ENDPOINT_URL"),
@@ -53,4 +53,3 @@ defs = Definitions(
         "spark_io": SparkIO(),
     }
 )
-
