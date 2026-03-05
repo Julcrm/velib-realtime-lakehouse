@@ -40,7 +40,7 @@ services:
     command: uv run dagster api grpc -h 0.0.0.0 -p 4000 -f src/definitions.py
 
   # --- SERVICE 3 : FASTAPI ---
-  pi-serving:
+  api-serving:
     build: .
     restart: always
     environment:
@@ -48,6 +48,7 @@ services:
       AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
       AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
       S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
+      API_DOMAIN: '${API_DOMAIN}'
     networks:
       - coolify
     labels:
