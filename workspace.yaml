@@ -2,4 +2,4 @@ load_from:
   - grpc_server:
       host: my-spark-project
       port: 4000
-      location_name: "spark_project"
+      location_name: "spark-worker"
