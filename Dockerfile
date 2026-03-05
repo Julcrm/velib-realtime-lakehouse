@@ -49,8 +49,3 @@ EXPOSE 4000 8000
 
 # Le conteneur démarre via le script d'aiguillage
 CMD ["./entrypoint.sh"]
-
-# On utilise "uv run" pour lancer la commande dans l'environnement virtuel
-CMD sh -c "cp dagster.yaml $DAGSTER_HOME/dagster.yaml && \
-           cp workspace.yaml $DAGSTER_HOME/workspace.yaml && \
-           uv run dagster api grpc -h 0.0.0.0 -p 4000 -f src/definitions.py"
