@@ -40,9 +40,9 @@ def get_critical_alerts():
     try:
         query = """
             WITH target_stations AS (
-                SELECT station_code, station_name
+                SELECT station_code, station_name, bikes
                 FROM read_parquet('s3://gold/alerts/current_status/*.parquet')
-                WHERE bikes <= 2 
+                WHERE bikes <= 5 -- On élargit un peu pour avoir de la donnée
             ),
             historical_trends AS (
                 SELECT 
@@ -55,22 +55,31 @@ def get_critical_alerts():
             )
             SELECT 
                 t.station_name,
-                h.bikes_available as current_bikes,
+                t.bikes as current_bikes,
                 LIST(h.bikes_available ORDER BY h.last_reported ASC) as sparkline_data
             FROM target_stations t
             JOIN historical_trends h ON t.station_code = h.station_code
             WHERE h.rank <= 5
-            GROUP BY t.station_name, h.bikes_available
+            GROUP BY t.station_name, t.bikes
             ORDER BY current_bikes ASC
         """
 
         cursor = con.execute(query)
-        columns = [desc[0] for desc in cursor.description]
+        columns = [column_meta[0] for column_meta in cursor.description]
         results = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-        return results
-        # -----------------------------
+        # --- SYNCHRONISATION ICI ---
+        # On calcule les agrégats à la volée avant de renvoyer
+        critical_count = sum(1 for s in results if s['current_bikes'] == 0)
+        warning_count = sum(1 for s in results if 0 < s['current_bikes'] <= 3)
 
+        return {
+            "stations": results,
+            "summary": {
+                "critical_empty": critical_count,
+                "warning_low": warning_count
+            }
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
