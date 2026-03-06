@@ -35,17 +35,14 @@ RUN mkdir -p /opt/spark/jars && \
 # --- 6. Setup Dagster et Fichiers ---
 RUN mkdir -p $DAGSTER_HOME
 
-# Copie des configs et du code
+# Copie des configs vers le home de Dagster ET le répertoire de l'app
+COPY dagster.yaml workspace.yaml $DAGSTER_HOME/
 COPY dagster.yaml workspace.yaml ./
 COPY src/ ./src/
-COPY entrypoint.sh ./
-
-# Rendre le script exécutable
-RUN chmod +x entrypoint.sh
 
 # --- 7. Finalisation ---
 # On expose les deux ports potentiels
 EXPOSE 4000 8000
 
-# Le conteneur démarre via le script d'aiguillage
-CMD ["./entrypoint.sh"]
+# Par défaut, on lance l'API (chaque service surchargera cette commande dans docker-compose)
+CMD ["uv", "run", "uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000"]
