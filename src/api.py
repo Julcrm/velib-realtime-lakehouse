@@ -42,34 +42,35 @@ def get_critical_alerts():
     con = get_db_connection()
     try:
         query = """
-            WITH target_stations AS (
-                -- On cible uniquement les stations qui sont en alerte (Gold)
-                SELECT station_id, station_name, alert_level 
-                FROM read_parquet('s3://gold/alerts/current_status/*.parquet')
-                WHERE alert_level IN ('CRITICAL_EMPTY', 'WARNING_LOW')
-            ),
-            historical_trends AS (
-                -- On récupère les 4 dernières valeurs de vélos pour ces stations (Silver)
-                SELECT 
-                    station_code as station_id,
-                    bikes_available,
-                    last_reported,
-                    ROW_NUMBER() OVER (PARTITION BY station_code ORDER BY last_reported DESC) as rank
-                FROM read_parquet('s3://silver/velib_stats/*/*.parquet')
-                WHERE station_code IN (SELECT station_id FROM target_stations)
-            )
-            SELECT 
-                t.station_name,
-                h.bikes_available as bikes,
-                -- On crée une liste (Array) des 4 dernières valeurs pour le Front-end
-                LIST(h.bikes_available ORDER BY h.last_reported ASC) as sparkline_data,
-                t.alert_level
-            FROM target_stations t
-            JOIN historical_trends h ON t.station_id = h.station_id
-            WHERE h.rank <= 4
-            GROUP BY t.station_name, t.alert_level, h.bikes_available
-            ORDER BY t.alert_level ASC, bikes ASC
-        """
+                    WITH target_stations AS (
+                        -- Correction : On utilise station_code comme identifiant unique
+                        SELECT 
+                            station_code, 
+                            station_name
+                        FROM read_parquet('s3://gold/alerts/current_status/*.parquet')
+                        -- On filtre sur les stations qui ont peu de vélos (logique Gold)
+                        WHERE bikes <= 2 
+                    ),
+                    historical_trends AS (
+                        SELECT 
+                            station_code,
+                            bikes_available,
+                            last_reported,
+                            ROW_NUMBER() OVER (PARTITION BY station_code ORDER BY last_reported DESC) as rank
+                        FROM read_parquet('s3://silver/velib_stats/*/*.parquet')
+                        -- On ne joint que l'historique des stations cibles
+                        WHERE station_code IN (SELECT station_code FROM target_stations)
+                    )
+                    SELECT 
+                        t.station_name,
+                        h.bikes_available as current_bikes,
+                        LIST(h.bikes_available ORDER BY h.last_reported ASC) as sparkline_data
+                    FROM target_stations t
+                    JOIN historical_trends h ON t.station_code = h.station_code
+                    WHERE h.rank <= 5
+                    GROUP BY t.station_name, h.bikes_available
+                    ORDER BY current_bikes ASC
+                """
         df = con.execute(query).fetchdf()
 
         # Conversion en JSON : le Front recevra un champ 'sparkline_data': [2, 1, 0, 0]
