@@ -33,48 +33,44 @@ def get_db_connection():
     con.execute("SET s3_url_style='path';")
     return con
 
+
 @app.get("/alerts/critical")
 def get_critical_alerts():
-    """
-    Retourne les stations critiques avec leur tendance historique (Sparklines).
-    Exploite la couche Silver pour le Time-Series et la Gold pour les alertes.
-    """
     con = get_db_connection()
     try:
         query = """
-                    WITH target_stations AS (
-                        -- Correction : On utilise station_code comme identifiant unique
-                        SELECT 
-                            station_code, 
-                            station_name
-                        FROM read_parquet('s3://gold/alerts/current_status/*.parquet')
-                        -- On filtre sur les stations qui ont peu de vélos (logique Gold)
-                        WHERE bikes <= 2 
-                    ),
-                    historical_trends AS (
-                        SELECT 
-                            station_code,
-                            bikes_available,
-                            last_reported,
-                            ROW_NUMBER() OVER (PARTITION BY station_code ORDER BY last_reported DESC) as rank
-                        FROM read_parquet('s3://silver/velib_stats/*/*.parquet')
-                        -- On ne joint que l'historique des stations cibles
-                        WHERE station_code IN (SELECT station_code FROM target_stations)
-                    )
-                    SELECT 
-                        t.station_name,
-                        h.bikes_available as current_bikes,
-                        LIST(h.bikes_available ORDER BY h.last_reported ASC) as sparkline_data
-                    FROM target_stations t
-                    JOIN historical_trends h ON t.station_code = h.station_code
-                    WHERE h.rank <= 5
-                    GROUP BY t.station_name, h.bikes_available
-                    ORDER BY current_bikes ASC
-                """
-        df = con.execute(query).fetchdf()
+            WITH target_stations AS (
+                SELECT station_code, station_name
+                FROM read_parquet('s3://gold/alerts/current_status/*.parquet')
+                WHERE bikes <= 2 
+            ),
+            historical_trends AS (
+                SELECT 
+                    station_code,
+                    bikes_available,
+                    last_reported,
+                    ROW_NUMBER() OVER (PARTITION BY station_code ORDER BY last_reported DESC) as rank
+                FROM read_parquet('s3://silver/velib_stats/*/*.parquet')
+                WHERE station_code IN (SELECT station_code FROM target_stations)
+            )
+            SELECT 
+                t.station_name,
+                h.bikes_available as current_bikes,
+                LIST(h.bikes_available ORDER BY h.last_reported ASC) as sparkline_data
+            FROM target_stations t
+            JOIN historical_trends h ON t.station_code = h.station_code
+            WHERE h.rank <= 5
+            GROUP BY t.station_name, h.bikes_available
+            ORDER BY current_bikes ASC
+        """
 
-        # Conversion en JSON : le Front recevra un champ 'sparkline_data': [2, 1, 0, 0]
-        return df.to_dict(orient="records")
+        cursor = con.execute(query)
+        columns = [desc[0] for desc in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        return results
+        # -----------------------------
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
