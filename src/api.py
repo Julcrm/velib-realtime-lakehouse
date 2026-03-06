@@ -15,6 +15,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    return {"message": "Velib Lakehouse API is running", "version": "0.1.0"}
+
+
 # Configuration MinIO pour DuckDB
 # On utilise les mêmes variables d'env que ton pipeline Dagster
 MINIO_ENDPOINT = os.getenv("S3_ENDPOINT_URL", "http://localhost:9000").replace("http://", "")
