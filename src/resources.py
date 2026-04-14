@@ -65,20 +65,42 @@ class SparkIO(ConfigurableResource):
     """
 
     def get_session(self, app_name: str = "DagsterSparkJob") -> SparkSession:
-        """Initialise et retourne une SparkSession configurée pour S3A et Kafka."""
+        """Initialise Spark avec les JARs locaux pré-installés."""
+        import os
+
+        # Chemin vers le dossier où tu as fait tes curl
+        jars_path = "/opt/spark/jars"
+
+        # Liste exacte des fichiers téléchargés dans ton Dockerfile
+        # L'ordre n'est pas vital, mais la présence de chaque fichier l'est.
+        jars_list = [
+            f"{jars_path}/hadoop-aws-3.3.4.jar",
+            f"{jars_path}/aws-java-sdk-bundle-1.12.262.jar",
+            f"{jars_path}/spark-sql-kafka-0-10_2.12-3.5.3.jar",
+            f"{jars_path}/kafka-clients-3.5.1.jar",
+            f"{jars_path}/spark-token-provider-kafka-0-10_2.12-3.5.3.jar",
+            f"{jars_path}/commons-pool2-2.11.1.jar"
+        ]
+
+        # On les joint par des virgules (format attendu par spark.jars)
+        jars_config = ",".join(jars_list)
 
         return (SparkSession.builder
                 .appName(app_name)
-                .master("local[2]")
-                .config("spark.jars",
-                        "/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar,/opt/spark/jars/spark-sql-kafka-0-10_2.12-3.5.3.jar,/opt/spark/jars/kafka-clients-3.5.1.jar,/opt/spark/jars/spark-token-provider-kafka-0-10_2.12-3.5.3.jar,/opt/spark/jars/commons-pool2-2.11.1.jar")
+                .master("local[1]")  # On reste sur 1 CPU pour ton VPS CPX22
+                .config("spark.jars", jars_config)
+                # Désactive le téléchargement automatique pour forcer l'usage du local
+                .config("spark.jars.ivy", "/tmp/.ivy")
+                # Configuration Mémoire optimisée pour tes 4GB RAM
+                .config("spark.driver.memory", "1g")
+                .config("spark.executor.memory", "1g")
+                # Configuration MinIO / S3A
                 .config("spark.hadoop.fs.s3a.endpoint", os.getenv("S3_ENDPOINT_URL"))
                 .config("spark.hadoop.fs.s3a.access.key", os.getenv("AWS_ACCESS_KEY_ID"))
                 .config("spark.hadoop.fs.s3a.secret.key", os.getenv("AWS_SECRET_ACCESS_KEY"))
                 .config("spark.hadoop.fs.s3a.path.style.access", "true")
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-                .config("spark.driver.memory", "1g")
-                .config("spark.executor.memory", "1g")
+                .config("spark.sql.shuffle.partitions", "2")
                 .getOrCreate())
 
     def read_data(self, spark: SparkSession, path_or_paths: Union[str, list], format: str = "json",
