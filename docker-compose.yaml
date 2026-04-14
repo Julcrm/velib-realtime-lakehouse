@@ -13,6 +13,7 @@ services:
       AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
       AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
       S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
+      KAFKA_BOOTSTRAP_SERVERS: "redpanda:9092" # Pour que Dagster sache où envoyer
       GRPC_DNS_RESOLVER: native
     volumes:
       - 'dagster_home:/opt/dagster/dagster_home'
@@ -31,6 +32,7 @@ services:
       AWS_ACCESS_KEY_ID: '${AWS_ACCESS_KEY_ID}'
       AWS_SECRET_ACCESS_KEY: '${AWS_SECRET_ACCESS_KEY}'
       S3_ENDPOINT_URL: '${S3_ENDPOINT_URL}'
+      KAFKA_BOOTSTRAP_SERVERS: "redpanda:9092" # Pour que Spark puisse consommer
       DAGSTER_POSTGRES_USER: '${DAGSTER_POSTGRES_USER}'
       DAGSTER_POSTGRES_PASSWORD: '${DAGSTER_POSTGRES_PASSWORD}'
       DAGSTER_POSTGRES_DB: '${DAGSTER_POSTGRES_DB}'
@@ -53,6 +55,36 @@ services:
     networks:
       - coolify
     command: uv run uvicorn src.api:app --host 0.0.0.0 --port 8000
+
+  # --- NOUVEAU SERVICE : REDPANDA (Broker) ---
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
+    container_name: redpanda
+    command:
+      - redpanda start
+      - --smp 1 # On limite à 1 cœur pour ton VPS
+      - --memory 1G # On limite à 1Go de RAM
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr 0.0.0.0:8082
+      - --advertise-pandaproxy-addr redpanda:8082
+    networks:
+      - coolify
+
+  # --- NOUVEAU SERVICE : REDPANDA CONSOLE (UI) ---
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.4.3
+    container_name: redpanda-console
+    environment:
+      KAFKA_BROKERS: "redpanda:9092"
+    ports:
+      - "8081:8080" # UI accessible sur le port 8081 de ton VPS
+    networks:
+      - coolify
+    depends_on:
+      - redpanda
 
 networks:
   coolify:
