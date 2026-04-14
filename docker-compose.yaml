@@ -21,9 +21,11 @@ services:
     command: >
       sh -c "uv run dagster-webserver -h 0.0.0.0 -p 3000 -w workspace.yaml & uv run dagster-daemon run -w workspace.yaml"
 
-  # --- SERVICE 2 : SPARK WORKER ---
+    # --- SERVICE 2 : SPARK WORKER ---
   spark-worker:
     build: .
+    container_name: spark-worker # FORCE le nom pour Coolify
+    hostname: spark-worker       # FORCE le nom pour le DNS
     restart: always
     ports:
       - "4000:4000"
