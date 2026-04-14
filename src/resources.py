@@ -77,7 +77,7 @@ class SparkIO(ConfigurableResource):
 
         return (SparkSession.builder
                 .appName(app_name)
-                .master("local[*]")
+                .master("local[1]")
                 # On joint les packages avec une virgule
                 .config("spark.jars.packages", ",".join(packages))
                 .config("spark.hadoop.fs.s3a.endpoint", os.getenv("S3_ENDPOINT_URL"))
@@ -85,8 +85,10 @@ class SparkIO(ConfigurableResource):
                 .config("spark.hadoop.fs.s3a.secret.key", os.getenv("AWS_SECRET_ACCESS_KEY"))
                 .config("spark.hadoop.fs.s3a.path.style.access", "true")
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-                .config("spark.sql.shuffle.partitions", "4")
-                .config("spark.default.parallelism", "4")
+                .config("spark.driver.memory", "512m")
+                .config("spark.executor.memory", "512m")
+                .config("spark.sql.shuffle.partitions", "2")
+                .config("spark.default.parallelism", "2")
                 .getOrCreate())
 
     def read_data(self, spark: SparkSession, path_or_paths: Union[str, list], format: str = "json",
