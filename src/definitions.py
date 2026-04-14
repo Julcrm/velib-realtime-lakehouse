@@ -1,34 +1,22 @@
-from dagster import Definitions, load_assets_from_modules, EnvVar, ScheduleDefinition
+from dagster import Definitions, load_assets_from_modules, EnvVar, ScheduleDefinition, AssetSelection
 from src.assets import bronze, silver, station_reference, velib_alerte, maintenance
 from src.resources import MinioResource, SparkIO
 
 # Chargement auto
 all_assets = load_assets_from_modules([bronze, silver, station_reference, velib_alerte, maintenance])
 
-# 1. Ingestion
+# 2. On garde uniquement le Schedule du Bronze (Le point d'entrée)
+# Il va "pousser" la donnée dans Redpanda toutes les 5 min.
 ingestion_schedule = ScheduleDefinition(
     name="ingestion_redpanda_5m",
     cron_schedule="*/5 * * * *",
-    target=bronze.velib_redpanda_producer,
+    target=AssetSelection.assets(bronze.velib_redpanda_producer),
 )
 
-# 2. Processing
-processing_schedule = ScheduleDefinition(
-    name="processing_silver_gold_15m",
-    cron_schedule="*/15 * * * *",
-    target=[silver.velib_stats_silver, velib_alerte.velib_critical_alerts],
-)
-
-# 3. Maintenance
-daily_schedule = ScheduleDefinition(
-    name="daily_maintenance_and_reference",
-    cron_schedule="0 0 * * *",
-    target=[station_reference.velib_reference_bronze, maintenance.bronze_cleanup],
-)
-
+# 3. On définit les ressources
 defs = Definitions(
     assets=all_assets,
-    schedules=[ingestion_schedule, processing_schedule, daily_schedule],
+    schedules=[ingestion_schedule], # On ne met que le schedule "maître"
     resources={
         "minio": MinioResource(
             endpoint_url=EnvVar("S3_ENDPOINT_URL"),
