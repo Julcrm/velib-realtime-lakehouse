@@ -35,8 +35,12 @@ services:
       DAGSTER_POSTGRES_PASSWORD: '${DAGSTER_POSTGRES_PASSWORD}'
       DAGSTER_POSTGRES_DB: '${DAGSTER_POSTGRES_DB}'
       DAGSTER_POSTGRES_HOST: '${DAGSTER_POSTGRES_HOST}'
+      KAFKA_BOOTSTRAP_SERVERS: 'redpanda:9092'
+      PYTHONUNBUFFERED: "1"
     networks:
-      - coolify
+      coolify:
+        aliases:
+          - spark-worker
     command: uv run dagster api grpc -h 0.0.0.0 -p 4000 -f src/definitions.py
 
   # --- SERVICE 3 : FASTAPI ---
