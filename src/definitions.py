@@ -1,48 +1,34 @@
-"""
-Définitions Dagster.
-
-Ce module agrège tous les assets, ressources, schedules et sensors
-pour définir le code location Dagster.
-"""
-
 from dagster import Definitions, load_assets_from_modules, EnvVar, ScheduleDefinition
-
-# Import des modules d'assets (plutôt que les assets individuels)
 from src.assets import bronze, silver, station_reference, velib_alerte, maintenance
+from src.resources import MinioResource, SparkIO
 
-# Import des ressources
-from src.resources import MinioResource
-from src.resources import SparkIO
-
-
-# Chargement automatique de TOUS les assets détectés dans ces modules
+# Chargement auto
 all_assets = load_assets_from_modules([bronze, silver, station_reference, velib_alerte, maintenance])
 
-# 1. Ingestion (Toutes les 5 min)
+# 1. Ingestion
 ingestion_schedule = ScheduleDefinition(
-    name="ingestion_bronze_5m",
+    name="ingestion_redpanda_5m",
     cron_schedule="*/5 * * * *",
-    target=[bronze.velib_realtime_bronze],
+    target=bronze.velib_redpanda_producer,
 )
 
-# 2. Processing & Alerting (Toutes les 15 min)
+# 2. Processing
 processing_schedule = ScheduleDefinition(
     name="processing_silver_gold_15m",
     cron_schedule="*/15 * * * *",
     target=[silver.velib_stats_silver, velib_alerte.velib_critical_alerts],
 )
 
-# 3. Maintenance (Quotidien)
+# 3. Maintenance
 daily_schedule = ScheduleDefinition(
     name="daily_maintenance_and_reference",
     cron_schedule="0 0 * * *",
     target=[station_reference.velib_reference_bronze, maintenance.bronze_cleanup],
 )
 
-# Définitions Globales
 defs = Definitions(
     assets=all_assets,
-    schedules=[ingestion_schedule, processing_schedule, daily_schedule], # Les 3 doivent être ici
+    schedules=[ingestion_schedule, processing_schedule, daily_schedule],
     resources={
         "minio": MinioResource(
             endpoint_url=EnvVar("S3_ENDPOINT_URL"),
