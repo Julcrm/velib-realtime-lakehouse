@@ -67,28 +67,18 @@ class SparkIO(ConfigurableResource):
     def get_session(self, app_name: str = "DagsterSparkJob") -> SparkSession:
         """Initialise et retourne une SparkSession configurée pour S3A et Kafka."""
 
-        # On définit les packages nécessaires
-        # 1. hadoop-aws : pour parler à MinIO
-        # 2. spark-sql-kafka : pour parler à Redpanda
-        packages = [
-            "org.apache.hadoop:hadoop-aws:3.3.4",
-            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3"
-        ]
-
         return (SparkSession.builder
                 .appName(app_name)
-                .master("local[1]")
-                # On joint les packages avec une virgule
-                .config("spark.jars.packages", ",".join(packages))
+                .master("local[2]")
+                .config("spark.jars",
+                        "/opt/spark/jars/hadoop-aws-3.3.4.jar,/opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar,/opt/spark/jars/spark-sql-kafka-0-10_2.12-3.5.3.jar,/opt/spark/jars/kafka-clients-3.5.1.jar,/opt/spark/jars/spark-token-provider-kafka-0-10_2.12-3.5.3.jar,/opt/spark/jars/commons-pool2-2.11.1.jar")
                 .config("spark.hadoop.fs.s3a.endpoint", os.getenv("S3_ENDPOINT_URL"))
                 .config("spark.hadoop.fs.s3a.access.key", os.getenv("AWS_ACCESS_KEY_ID"))
                 .config("spark.hadoop.fs.s3a.secret.key", os.getenv("AWS_SECRET_ACCESS_KEY"))
                 .config("spark.hadoop.fs.s3a.path.style.access", "true")
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-                .config("spark.driver.memory", "512m")
-                .config("spark.executor.memory", "512m")
-                .config("spark.sql.shuffle.partitions", "2")
-                .config("spark.default.parallelism", "2")
+                .config("spark.driver.memory", "1g")
+                .config("spark.executor.memory", "1g")
                 .getOrCreate())
 
     def read_data(self, spark: SparkSession, path_or_paths: Union[str, list], format: str = "json",
