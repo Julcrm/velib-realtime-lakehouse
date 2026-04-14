@@ -65,11 +65,21 @@ class SparkIO(ConfigurableResource):
     """
 
     def get_session(self, app_name: str = "DagsterSparkJob") -> SparkSession:
-        """Initialise et retourne une SparkSession configurée pour S3A."""
+        """Initialise et retourne une SparkSession configurée pour S3A et Kafka."""
+
+        # On définit les packages nécessaires
+        # 1. hadoop-aws : pour parler à MinIO
+        # 2. spark-sql-kafka : pour parler à Redpanda
+        packages = [
+            "org.apache.hadoop:hadoop-aws:3.3.4",
+            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3"
+        ]
+
         return (SparkSession.builder
                 .appName(app_name)
                 .master("local[*]")
-                .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4")
+                # On joint les packages avec une virgule
+                .config("spark.jars.packages", ",".join(packages))
                 .config("spark.hadoop.fs.s3a.endpoint", os.getenv("S3_ENDPOINT_URL"))
                 .config("spark.hadoop.fs.s3a.access.key", os.getenv("AWS_ACCESS_KEY_ID"))
                 .config("spark.hadoop.fs.s3a.secret.key", os.getenv("AWS_SECRET_ACCESS_KEY"))
@@ -77,7 +87,6 @@ class SparkIO(ConfigurableResource):
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
                 .config("spark.sql.shuffle.partitions", "4")
                 .config("spark.default.parallelism", "4")
-                .config("spark.sql.files.ignoreCorruptFiles", "true")
                 .getOrCreate())
 
     def read_data(self, spark: SparkSession, path_or_paths: Union[str, list], format: str = "json",
