@@ -29,7 +29,7 @@ def velib_stats_streaming_silver(context, spark_io: SparkIO):
     df_raw = (
         spark.readStream
         .format("kafka")
-        .option("kafka.bootstrap.servers", "10.0.4.2:9000")
+        .option("kafka.bootstrap.servers", "redpanda:9092")
         .option("subscribe", "velib.raw.status")
         .option("startingOffsets", "earliest") # On reprend tout au début la première fois
         .load()

@@ -59,6 +59,7 @@ services:
     # --- REDPANDA (Minimaliste) ---
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:v23.3.10
+    container_name: redpanda
     command:
       - redpanda start
       - --smp 1
